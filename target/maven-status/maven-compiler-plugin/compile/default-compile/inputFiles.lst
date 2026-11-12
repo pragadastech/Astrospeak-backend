@@ -1,0 +1,16 @@
+C:\Users\Dell\Downloads\ASTRO WEBSITE\fullstack\backend\src\main\java\com\astrotalk\AstroTalkApplication.java
+C:\Users\Dell\Downloads\ASTRO WEBSITE\fullstack\backend\src\main\java\com\astrotalk\chart\Chart.java
+C:\Users\Dell\Downloads\ASTRO WEBSITE\fullstack\backend\src\main\java\com\astrotalk\chart\ScientificChartEngine.java
+C:\Users\Dell\Downloads\ASTRO WEBSITE\fullstack\backend\src\main\java\com\astrotalk\config\ApiException.java
+C:\Users\Dell\Downloads\ASTRO WEBSITE\fullstack\backend\src\main\java\com\astrotalk\config\AppProperties.java
+C:\Users\Dell\Downloads\ASTRO WEBSITE\fullstack\backend\src\main\java\com\astrotalk\config\JwtFilter.java
+C:\Users\Dell\Downloads\ASTRO WEBSITE\fullstack\backend\src\main\java\com\astrotalk\config\JwtService.java
+C:\Users\Dell\Downloads\ASTRO WEBSITE\fullstack\backend\src\main\java\com\astrotalk\config\RestAdvice.java
+C:\Users\Dell\Downloads\ASTRO WEBSITE\fullstack\backend\src\main\java\com\astrotalk\config\SecurityConfig.java
+C:\Users\Dell\Downloads\ASTRO WEBSITE\fullstack\backend\src\main\java\com\astrotalk\domain\Models.java
+C:\Users\Dell\Downloads\ASTRO WEBSITE\fullstack\backend\src\main\java\com\astrotalk\domain\Repos.java
+C:\Users\Dell\Downloads\ASTRO WEBSITE\fullstack\backend\src\main\java\com\astrotalk\service\CatalogService.java
+C:\Users\Dell\Downloads\ASTRO WEBSITE\fullstack\backend\src\main\java\com\astrotalk\service\NotifyService.java
+C:\Users\Dell\Downloads\ASTRO WEBSITE\fullstack\backend\src\main\java\com\astrotalk\service\PlaceService.java
+C:\Users\Dell\Downloads\ASTRO WEBSITE\fullstack\backend\src\main\java\com\astrotalk\service\StudioService.java
+C:\Users\Dell\Downloads\ASTRO WEBSITE\fullstack\backend\src\main\java\com\astrotalk\web\ApiControllers.java
