@@ -18,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,13 +35,15 @@ public class StudioService {
     private final Repos.MemoryRepo memories;
     private final Repos.NotificationRepo notifications;
     private final Repos.QuestionRepo questions;
+    private final Repos.ReferralRepo referrals;
+    private final Repos.PointRepo points;
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final CatalogService catalog;
     private final NotifyService notify;
     private final AppProperties props;
 
-    public StudioService(Repos.UserRepo users, Repos.ProfileRepo profiles, Repos.ConsultationRepo consultations, Repos.ReportRepo reports, Repos.ReportFileRepo files, Repos.ChatRepo chats, Repos.MemoryRepo memories, Repos.NotificationRepo notifications, Repos.QuestionRepo questions, PasswordEncoder encoder, JwtService jwt, CatalogService catalog, NotifyService notify, AppProperties props) {
+    public StudioService(Repos.UserRepo users, Repos.ProfileRepo profiles, Repos.ConsultationRepo consultations, Repos.ReportRepo reports, Repos.ReportFileRepo files, Repos.ChatRepo chats, Repos.MemoryRepo memories, Repos.NotificationRepo notifications, Repos.QuestionRepo questions, Repos.ReferralRepo referrals, Repos.PointRepo points, PasswordEncoder encoder, JwtService jwt, CatalogService catalog, NotifyService notify, AppProperties props) {
         this.users = users;
         this.profiles = profiles;
         this.consultations = consultations;
@@ -50,6 +53,8 @@ public class StudioService {
         this.memories = memories;
         this.notifications = notifications;
         this.questions = questions;
+        this.referrals = referrals;
+        this.points = points;
         this.encoder = encoder;
         this.jwt = jwt;
         this.catalog = catalog;
@@ -96,6 +101,7 @@ public class StudioService {
         user.passwordHash = encoder.encode(password);
         users.save(user);
         saveProfile(user, "Self", name, user.gender, body.path("birth"));
+        attachReferral(user, body);
         if ("FAMILY".equals(type) && body.path("members").isArray()) {
             int extra = 0;
             for (JsonNode member : body.path("members")) {
@@ -132,6 +138,7 @@ public class StudioService {
         user.passwordHash = encoder.encode(password);
         users.save(user);
         saveProfile(user, "Self", name, "", body.path("birth"));
+        attachReferral(user, body);
         boolean emailed = notify.accountCreated(user, password);
         Map<String, Object> out = publicUser(user);
         out.put("token", issueTabToken(res, user));
@@ -197,7 +204,38 @@ public class StudioService {
         m.put("email", u.email);
         m.put("phone", u.phone);
         m.put("billingState", u.billingState);
+        m.put("permissions", sectionsOf(u));
         return m;
+    }
+
+    /** Screens an employee can be allowed to open. Employees and Settings stay with the administrator. */
+    public static final List<String> STAFF_SECTIONS = List.of("overview", "customers", "consults", "questions", "plans", "reports", "notes");
+    private static final String ORIGINAL_STAFF = "overview,customers,consults,reports,notes";
+
+    public List<String> sectionsOf(Models.User u) {
+        if ("ADMIN".equals(u.role)) return List.of("overview", "customers", "employees", "consults", "questions", "plans", "reports", "notes", "settings");
+        String raw = u.permissions == null || u.permissions.isBlank() ? ORIGINAL_STAFF : u.permissions;
+        List<String> out = new ArrayList<>();
+        for (String part : raw.split(",")) {
+            String key = part.trim();
+            if (STAFF_SECTIONS.contains(key) && !out.contains(key)) out.add(key);
+        }
+        return out;
+    }
+
+    public void requireSection(Models.User u, String section) {
+        if (!sectionsOf(u).contains(section)) throw new ApiException(403, "This section is not open for your account");
+    }
+
+    private String storeSections(JsonNode node) {
+        if (node == null || !node.isArray()) throw new ApiException(400, "Choose what this employee can see");
+        List<String> picked = new ArrayList<>();
+        for (JsonNode item : node) {
+            String key = item.asText("").trim();
+            if (STAFF_SECTIONS.contains(key) && !picked.contains(key)) picked.add(key);
+        }
+        if (picked.isEmpty()) throw new ApiException(400, "Choose at least one section this employee can see");
+        return String.join(",", picked);
     }
 
     public List<Models.Profile> profilesOf(Models.User u) {
@@ -222,7 +260,7 @@ public class StudioService {
 
     public Chart chart(Models.Profile p) {
         if (p.dob == null || p.lat == null || p.lon == null || p.tz == null) throw new ApiException(400, "This profile needs a complete birth place and time");
-        return ScientificChartEngine.compute(p.dob, p.tob, p.lat, p.lon, p.tz);
+        return ScientificChartEngine.compute(p.dob, p.tob, p.lat, p.lon, p.tz, p.division);
     }
 
     @Transactional
@@ -231,7 +269,7 @@ public class StudioService {
         if (existing.isEmpty()) {
             Chart c = chart(p);
             String who = "Self".equals(p.relation) ? "you" : p.fullName + " (your " + p.relation.toLowerCase() + ")";
-            String text = "Hello, I am looking at the scientific chart for " + who + ". "
+            String text = "Hello, I am looking at the natal chart for " + who + ". "
                     + p.fullName + " has " + c.ascendant.sign + " rising, Moon in " + c.moonSign + " (" + c.nakshatra + "), and the running period is " + c.currentDasha.label + ". "
                     + "Tell me why you are consulting — career, education, marriage, health, money, or something else.";
             say(u, p, "assistant", text);
@@ -293,9 +331,13 @@ public class StudioService {
         c.baseMinor = ((Number) quote.get("baseMinor")).longValue();
         c.taxMinor = ((Number) quote.get("taxMinor")).longValue();
         c.totalMinor = ((Number) quote.get("totalMinor")).longValue();
+        int use = pointsRequested(body);
+        applyPoints(u, c, use);
         c.demo = true;
         c.intake = intake(body.path("answers"));
         consultations.save(c);
+        if (use > 0) addPoints(u.id, -use, "spent", null, c.id, use + " points on " + c.planName);
+        creditPlanShare(u, c, plan.priceInr);
         notify.booking(u, c);
         if (c.intake != null && !c.intake.isBlank()) notify.adminConnected(props.getAdminEmail(), u, c);
         return c;
@@ -318,12 +360,15 @@ public class StudioService {
 
     public Models.ReportFile download(Models.User u, String id) {
         Models.Report r = reports.findById(id).orElseThrow(() -> new ApiException(404, "Report not found"));
-        if (!u.id.equals(r.userId) && !"ADMIN".equals(u.role) && !"EMPLOYEE".equals(u.role)) throw new ApiException(404, "Report not found");
+        if (!u.id.equals(r.userId)) {
+            if (!"ADMIN".equals(u.role) && !"EMPLOYEE".equals(u.role)) throw new ApiException(404, "Report not found");
+            requireSection(u, "reports");
+        }
         return files.findById(id).orElseThrow(() -> new ApiException(404, "The file is not ready yet"));
     }
 
     @Transactional
-    public Map<String, Object> addEmployee(String fullName, String email) {
+    public Map<String, Object> addEmployee(String fullName, String email, JsonNode permissions) {
         String mail = email == null ? "" : email.trim().toLowerCase();
         if (fullName == null || fullName.isBlank()) throw new ApiException(400, "Enter the employee name");
         if (!mail.contains("@")) throw new ApiException(400, "Enter a valid email");
@@ -336,10 +381,34 @@ public class StudioService {
         emp.email = mail;
         emp.passwordHash = encoder.encode(temporary);
         emp.billingState = catalog.businessState();
+        emp.permissions = storeSections(permissions);
+        if (!notify.employeeAccess(emp, temporary)) throw new ApiException(502, "The password email could not be sent, so the employee was not added.");
         users.save(emp);
-        Map<String, Object> out = publicUser(emp);
-        out.put("temporaryPassword", temporary);
-        return out;
+        return publicUser(emp);
+    }
+
+    /** Mails a new password. An unknown email gets the same quiet success so the page does not reveal who has an account. */
+    @Transactional
+    public void forgotPassword(String email) {
+        String mail = email == null ? "" : email.trim();
+        var found = users.findByEmailIgnoreCase(mail);
+        if (found.isEmpty()) return;
+        Models.User user = found.get();
+        String next = password();
+        if (!notify.passwordReset(user, next)) throw new ApiException(502, "The password email could not be sent. Try again in a moment.");
+        user.passwordHash = encoder.encode(next);
+        users.save(user);
+    }
+
+    @Transactional
+    public Map<String, Object> updateEmployee(String id, String fullName, JsonNode permissions) {
+        Models.User emp = users.findById(id == null ? "" : id).orElseThrow(() -> new ApiException(404, "Employee not found"));
+        if (!"EMPLOYEE".equals(emp.role)) throw new ApiException(404, "Employee not found");
+        if (fullName == null || fullName.isBlank() || fullName.trim().length() > 80) throw new ApiException(400, "Enter the employee name");
+        emp.fullName = fullName.trim();
+        emp.permissions = storeSections(permissions);
+        users.save(emp);
+        return publicUser(emp);
     }
 
     @Transactional
@@ -400,7 +469,11 @@ public class StudioService {
 
     public List<Models.Consultation> myConsultations(Models.User u) { return consultations.findByUserIdOrderByCreatedAtDesc(u.id); }
     public List<Models.User> customers() { return users.findByRoleOrderByCreatedAtDesc("CLIENT"); }
-    public List<Models.User> employees() { return users.findByRoleOrderByCreatedAtDesc("EMPLOYEE"); }
+    public List<Map<String, Object>> employees() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Models.User u : users.findByRoleOrderByCreatedAtDesc("EMPLOYEE")) out.add(publicUser(u));
+        return out;
+    }
     public List<Map<String, Object>> allConsultations() {
         List<Map<String, Object>> out = new ArrayList<>();
         for (Models.Consultation c : consultations.findAllByOrderByCreatedAtDesc()) {
@@ -416,6 +489,8 @@ public class StudioService {
             row.put("currency", c.currency);
             row.put("gstMode", c.gstMode);
             row.put("totalMinor", c.totalMinor);
+            row.put("pointsUsed", c.pointsUsed);
+            row.put("payableMinor", c.payableMinor);
             row.put("intake", c.intake);
             users.findById(c.userId).ifPresent(u -> {
                 row.put("customerName", u.fullName);
@@ -490,6 +565,11 @@ public class StudioService {
         p.lon = lon;
         p.tz = tz;
         p.tzName = birth.path("tzName").asText("");
+        if (birth.has("number") && !birth.get("number").isNull() && !birth.get("number").asText("").isBlank()) {
+            int number = birth.get("number").asInt(-1);
+            if (number < 0 || number > 249) throw new ApiException(400, "Choose a number from 0 to 249");
+            p.division = number;
+        }
         return profiles.save(p);
     }
 
@@ -537,11 +617,232 @@ public class StudioService {
             return "Tell me a little more about what is happening now, and what you want clarity on in the next two years. I will then read it from the chart: the rising sub-lord is " + c.ascendant.subLord + ".";
         }
         Chart.Point moon = c.planet("Moon");
-        return p.fullName + " has " + c.ascendant.sign + " rising. The ascendant sub-lord is " + c.ascendant.subLord
-                + ", and the Moon is in " + moon.sign + " in " + moon.nakshatra + " (star lord " + moon.starLord + ", sub lord " + moon.subLord + "). "
+        return p.fullName + " has " + c.ascendant.sign + " rising. The ascendant sub lord is " + c.ascendant.subLord
+                + " and the sub sub lord is " + c.cusps.get(0).subSubLord
+                + ". The Moon is in " + moon.sign + " in " + moon.nakshatra + " (star lord " + moon.starLord + ", sub lord " + moon.subLord + ", sub sub lord " + moon.subSubLord + "). "
                 + "The running period is " + c.currentDasha.label + ", through " + c.currentDasha.pdEnd + ". "
                 + "Use that window for the question you asked. The houses the ascendant sub-lord signifies are " + c.housesSignified(c.ascendant.subLord) + ". "
                 + "If you want this written up, request a detailed report from My Reports, or book a live session and the astrologer will go through the remedies with you.";
+    }
+
+    /** 1% of the plan price in rupees. ₹1,500 credits 15 points. */
+    public static int planShare(int priceInr) {
+        if (priceInr <= 0) return 0;
+        return (int) Math.round(priceInr / 100.0);
+    }
+
+    public int pointsOf(Models.User u) {
+        return points.findByUserIdOrderByCreatedAtDesc(u.id).stream().mapToInt(e -> e.points).sum();
+    }
+
+    public Map<String, Object> openReferral(String code) {
+        Models.Referral ref = referrals.findByCode(code == null ? "" : code.trim()).orElseThrow(() -> new ApiException(404, "This referral link is not active"));
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("open", "invited".equals(ref.status));
+        if (!"invited".equals(ref.status)) return m;
+        m.put("fullName", ref.fullName);
+        m.put("phone", ref.phone);
+        m.put("email", ref.email);
+        users.findById(ref.referrerId).ifPresent(r -> m.put("referrerName", r.fullName));
+        return m;
+    }
+
+    @Transactional
+    public Map<String, Object> refer(Models.User u, JsonNode body) {
+        if (!"CLIENT".equals(u.role)) throw new ApiException(403, "A client account can refer someone");
+        String name = text(body, "fullName");
+        String email = text(body, "email").toLowerCase();
+        String phone = text(body, "phone");
+        String phoneKey = digitsOf(phone);
+        if (name.isBlank() || name.length() > 80) throw new ApiException(400, "Enter their full name");
+        if (!email.contains("@") || email.length() > 120) throw new ApiException(400, "Enter a valid email");
+        if (phoneKey.length() < 8 || phoneKey.length() > 15) throw new ApiException(400, "Enter a phone number");
+        if (email.equalsIgnoreCase(u.email) || phoneKey.equals(digitsOf(u.phone))) throw new ApiException(400, "Enter someone else's details");
+        if (users.findByEmailIgnoreCase(email).isPresent() || phoneUsed(phoneKey)) throw new ApiException(409, "This person already has an account");
+        if (referrals.findByEmailIgnoreCase(email).isPresent()) throw new ApiException(409, "This person has already been referred");
+        if (referrals.findByPhoneKey(phoneKey).isPresent()) throw new ApiException(409, "This WhatsApp number has already been referred");
+        String code = referralCode();
+        String link = publicUrl() + "/?ref=" + code;
+        Models.Referral ref = new Models.Referral();
+        ref.referrerId = u.id;
+        ref.fullName = name;
+        ref.phone = phone.trim();
+        ref.phoneKey = phoneKey;
+        ref.email = email;
+        ref.code = code;
+        ref.status = "invited";
+        ref.signupLink = link;
+        ref.message = referralMessage(u, name, text(body, "message"), link);
+        if (!notify.referralEmail(email, u.fullName + " referred you to Astrology Talk", ref.message)) {
+            throw new ApiException(502, "The email could not be sent. Try again in a moment.");
+        }
+        ref.emailStatus = "SENT";
+        referrals.save(ref);
+        return referralView(ref, 0);
+    }
+
+    @Transactional
+    public Map<String, Object> updateReferral(Models.User u, String id, JsonNode body) {
+        Models.Referral ref = referrals.findById(id).orElseThrow(() -> new ApiException(404, "Referral not found"));
+        if (!u.id.equals(ref.referrerId)) throw new ApiException(404, "Referral not found");
+        if (!"invited".equals(ref.status)) throw new ApiException(400, "They have already signed up");
+        ref.message = referralMessage(u, ref.fullName, text(body, "message"), ref.signupLink);
+        if (!notify.referralEmail(ref.email, u.fullName + " referred you to Astrology Talk", ref.message)) {
+            throw new ApiException(502, "The email could not be sent. Try again in a moment.");
+        }
+        ref.emailStatus = "SENT";
+        referrals.save(ref);
+        int earned = points.findByUserIdOrderByCreatedAtDesc(u.id).stream()
+                .filter(e -> ref.id.equals(e.referralId) && e.points > 0)
+                .mapToInt(e -> e.points).sum();
+        return referralView(ref, earned);
+    }
+
+    public Map<String, Object> myReferrals(Models.User u) {
+        List<Models.PointEntry> entries = points.findByUserIdOrderByCreatedAtDesc(u.id);
+        Map<String, Integer> earned = new LinkedHashMap<>();
+        for (Models.PointEntry e : entries) {
+            if (e.referralId == null || e.points <= 0) continue;
+            earned.merge(e.referralId, e.points, Integer::sum);
+        }
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Models.Referral ref : referrals.findByReferrerIdOrderByCreatedAtDesc(u.id)) {
+            rows.add(referralView(ref, earned.getOrDefault(ref.id, 0)));
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("points", entries.stream().mapToInt(e -> e.points).sum());
+        m.put("referrals", rows);
+        List<Map<String, Object>> history = new ArrayList<>();
+        for (Models.PointEntry e : entries) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("points", e.points);
+            row.put("note", e.note);
+            row.put("createdAt", e.createdAt);
+            history.add(row);
+        }
+        m.put("history", history);
+        return m;
+    }
+
+    private void attachReferral(Models.User user, JsonNode body) {
+        if (user.referredBy != null && !user.referredBy.isBlank()) return;
+        Models.Referral ref = invitedReferral(body, user);
+        if (ref == null) return;
+        Models.User referrer = users.findById(ref.referrerId).orElse(null);
+        if (referrer == null || samePerson(referrer, user)) return;
+        ref.status = "joined";
+        ref.joinedUserId = user.id;
+        referrals.save(ref);
+        user.referredBy = referrer.id;
+        users.save(user);
+        addPoints(referrer.id, 5, "signup", ref.id, null, user.fullName + " created an account");
+    }
+
+    private Models.Referral invitedReferral(JsonNode body, Models.User user) {
+        String code = text(body, "referralCode");
+        if (!code.isBlank()) {
+            Models.Referral byCode = referrals.findByCode(code).orElse(null);
+            if (byCode != null && "invited".equals(byCode.status)) return byCode;
+        }
+        Models.Referral byEmail = referrals.findByEmailIgnoreCase(user.email).orElse(null);
+        if (byEmail != null && "invited".equals(byEmail.status)) return byEmail;
+        String phoneKey = digitsOf(user.phone);
+        if (phoneKey.length() < 8) return null;
+        Models.Referral byPhone = referrals.findByPhoneKey(phoneKey).orElse(null);
+        if (byPhone != null && "invited".equals(byPhone.status)) return byPhone;
+        return null;
+    }
+
+    private void applyPoints(Models.User u, Models.Consultation c, int use) {
+        if (use < 0) throw new ApiException(400, "Enter a points amount of zero or more");
+        int balance = pointsOf(u);
+        if (use > balance) throw new ApiException(400, "You have " + balance + " referral points");
+        if (use > 0 && !"INR".equals(c.currency)) throw new ApiException(400, "Referral points come off India bookings. 1 point is ₹1.");
+        long rupees = c.totalMinor / 100;
+        if (use > rupees) throw new ApiException(400, "This session can take up to " + rupees + " points");
+        c.pointsUsed = use;
+        c.payableMinor = c.totalMinor - use * 100L;
+    }
+
+    private int pointsRequested(JsonNode body) {
+        JsonNode node = body.get("points");
+        if (node == null || node.isNull() || node.asText("").isBlank()) return 0;
+        if (!node.isIntegralNumber()) throw new ApiException(400, "Enter a whole number of points");
+        return node.asInt();
+    }
+
+    private void creditPlanShare(Models.User buyer, Models.Consultation c, int priceInr) {
+        if (buyer.referredBy == null || buyer.referredBy.isBlank()) return;
+        int share = planShare(priceInr);
+        if (share <= 0) return;
+        String referralId = referrals.findByJoinedUserId(buyer.id).map(r -> r.id).orElse(null);
+        addPoints(buyer.referredBy, share, "purchase", referralId, c.id, buyer.fullName + " booked " + c.planName + ". 1% of ₹" + priceInr + " is " + share + " points.");
+    }
+
+    private void addPoints(String userId, int amount, String reason, String referralId, String consultationId, String note) {
+        Models.PointEntry e = new Models.PointEntry();
+        e.userId = userId;
+        e.points = amount;
+        e.reason = reason;
+        e.referralId = referralId;
+        e.consultationId = consultationId;
+        e.note = note;
+        points.save(e);
+    }
+
+    private Map<String, Object> referralView(Models.Referral ref, int earned) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", ref.id);
+        m.put("fullName", ref.fullName);
+        m.put("phone", ref.phone);
+        m.put("email", ref.email);
+        m.put("status", ref.status);
+        m.put("points", earned);
+        m.put("signupLink", ref.signupLink);
+        m.put("whatsappStatus", ref.whatsappStatus);
+        m.put("message", ref.message);
+        m.put("emailStatus", ref.emailStatus);
+        m.put("createdAt", ref.createdAt);
+        return m;
+    }
+
+    private boolean phoneUsed(String phoneKey) {
+        for (Models.User u : users.findAll()) {
+            if (phoneKey.equals(digitsOf(u.phone))) return true;
+        }
+        return false;
+    }
+
+    private boolean samePerson(Models.User a, Models.User b) {
+        if (a.email != null && a.email.equalsIgnoreCase(b.email)) return true;
+        String left = digitsOf(a.phone);
+        return left.length() >= 8 && left.equals(digitsOf(b.phone));
+    }
+
+    private String referralMessage(Models.User referrer, String guest, String written, String link) {
+        String text = written == null ? "" : written.trim();
+        if (text.isBlank()) {
+            text = "Hello " + guest + ",\n\n" + referrer.fullName + " referred you to Astrology Talk. Open the link in this email and create your account. Your natal chart is ready as soon as you sign up.";
+        }
+        if (text.length() > 2000) throw new ApiException(400, "Keep the message under 2000 characters");
+        if (link != null && !text.contains(link)) text = text + "\n\n" + link;
+        return text;
+    }
+
+    private String publicUrl() {
+        String url = props.getPublicUrl();
+        if (url == null || url.isBlank()) url = "http://localhost:5173";
+        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+    }
+
+    private String referralCode() {
+        byte[] b = new byte[6];
+        RND.nextBytes(b);
+        return HexFormat.of().formatHex(b);
+    }
+
+    private static String digitsOf(String phone) {
+        return phone == null ? "" : phone.replaceAll("\\D", "");
     }
 
     private static String text(JsonNode body, String field) {

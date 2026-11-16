@@ -11,6 +11,7 @@ public class AppProperties {
     private String mailFrom;
     private String whatsappToken;
     private String whatsappPhoneId;
+    private String publicUrl;
 
     public String getAdminEmail() { return adminEmail; }
     public void setAdminEmail(String adminEmail) { this.adminEmail = adminEmail; }
@@ -26,4 +27,6 @@ public class AppProperties {
     public void setWhatsappToken(String whatsappToken) { this.whatsappToken = whatsappToken; }
     public String getWhatsappPhoneId() { return whatsappPhoneId; }
     public void setWhatsappPhoneId(String whatsappPhoneId) { this.whatsappPhoneId = whatsappPhoneId; }
+    public String getPublicUrl() { return publicUrl; }
+    public void setPublicUrl(String publicUrl) { this.publicUrl = publicUrl; }
 }

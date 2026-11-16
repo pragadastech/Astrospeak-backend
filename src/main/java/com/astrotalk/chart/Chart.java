@@ -5,7 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Scientific chart data. Public fields are serialised to JSON for the React app. */
+/** KP chart data. Public fields are serialised to JSON with these exact names for the frontend. */
 public class Chart {
     public Map<String, Object> input = new LinkedHashMap<>();
     public Ayanamsa ayanamsa = new Ayanamsa();
@@ -23,7 +23,7 @@ public class Chart {
     public String moonSign;
     public String sunSign;
 
-    public static class Ayanamsa { public String name = "Scientific sidereal"; public double value; public String dms; public double yearDays = 365.25; }
+    public static class Ayanamsa { public String name = "Krishnamurti (KP)"; public double value; public String dms; }
 
     public static class Ascendant { public String sign; public int signIdx; public String dms; public String starLord; public String subLord; }
 
@@ -71,11 +71,7 @@ public class Chart {
         public List<Period> pratyantars;
     }
 
-    public static class CurrentDasha {
-        public String mahadasha, antardasha, pratyantar, mdEnd, adEnd, pdEnd;
-        /** Running period, for example "Ketu – Rahu – Mercury". */
-        public String label;
-    }
+    public static class CurrentDasha { public String mahadasha, antardasha, pratyantar, mdEnd, adEnd, pdEnd, label; }
 
     // ---- helpers used by the AI / rule-based astrologer ----
     public Point planet(String name) {

@@ -47,6 +47,10 @@ public final class Models {
         public String gender;
         public String billingState;
         public String language = "en";
+        /** Comma-separated portal sections an employee may open. Empty means the original staff set. */
+        @Column(length = 300) public String permissions;
+        /** Client who referred this account, set when they sign up from that invite. */
+        public String referredBy;
 
         protected String prefix() { return "usr"; }
     }
@@ -64,6 +68,8 @@ public final class Models {
         public Double lon;
         public Double tz;
         public String tzName;
+        /** 0 to 249 when the date of birth is not exact. Sets the ascendant sub division. */
+        public Integer division;
 
         protected String prefix() { return "prf"; }
     }
@@ -107,6 +113,10 @@ public final class Models {
         public boolean demo;
         /** Answers to the admin’s future-reading questions, stored with the booking. */
         @Column(length = 4000) public String intake;
+        /** Referral points applied to this session. 1 point is ₹1. */
+        public Integer pointsUsed;
+        /** Amount still to pay after points, in minor units. */
+        public Long payableMinor;
 
         protected String prefix() { return "con"; }
     }
@@ -169,6 +179,40 @@ public final class Models {
         @Column(length = 800) public String error;
 
         protected String prefix() { return "ntf"; }
+    }
+
+    @Entity @Table(name = "referrals")
+    public static class Referral extends Base {
+        public String referrerId;
+        public String fullName;
+        @Column(length = 80) public String phone;
+        /** Digits only, so the same number cannot be referred twice. */
+        @Column(unique = true, length = 20) public String phoneKey;
+        @Column(unique = true) public String email;
+        @Column(unique = true, length = 40) public String code;
+        /** invited, then joined after they create an account. */
+        public String status;
+        public String joinedUserId;
+        @Column(length = 400) public String signupLink;
+        public String whatsappStatus;
+        /** The note emailed to this person. The signup link is kept at the end. */
+        @Column(length = 2200) public String message;
+        public String emailStatus;
+
+        protected String prefix() { return "ref"; }
+    }
+
+    @Entity @Table(name = "point_entries")
+    public static class PointEntry extends Base {
+        public String userId;
+        /** Positive when earned, negative when spent on a session. */
+        public int points;
+        public String reason;
+        public String referralId;
+        public String consultationId;
+        @Column(length = 300) public String note;
+
+        protected String prefix() { return "pts"; }
     }
 
     @Entity @Table(name = "settings")

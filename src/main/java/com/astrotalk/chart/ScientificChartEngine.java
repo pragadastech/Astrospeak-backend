@@ -191,8 +191,46 @@ public final class ScientificChartEngine {
         return d;
     }
 
-    /** @param tz UTC offset in hours at birth */
+    /** Sidereal longitude at the start of sub division {@code number}. 0 is the opening of Aries. 1 to 249 are the 249 sub pieces, split where a sub crosses a sign. */
+    public static double divisionLongitude(int number) {
+        if (number < 0 || number > 249) throw new IllegalArgumentException("Number must be from 0 to 249");
+        if (number == 0) return 0;
+        return divisionStarts().get(number - 1);
+    }
+
+    private static List<Double> cachedDivisions;
+
+    static List<Double> divisionStarts() {
+        if (cachedDivisions != null) return cachedDivisions;
+        List<Double> starts = new ArrayList<>();
+        for (int nak = 0; nak < 27; nak++) {
+            String star = DASHA_ORDER[nak % 9];
+            double base = nak * NAK_SPAN;
+            double pos = 0;
+            while (pos < NAK_SPAN - 1e-8) {
+                double[] sub = divide(star, NAK_SPAN, Math.min(pos + 1e-9, NAK_SPAN - 1e-9));
+                double end = base + sub[1] + sub[2];
+                double x = base + sub[1];
+                while (true) {
+                    double boundary = (Math.floor(x / 30.0) + 1) * 30.0;
+                    starts.add(norm(x));
+                    if (boundary < end - 1e-8) x = boundary;
+                    else break;
+                }
+                pos = sub[1] + sub[2];
+            }
+        }
+        if (starts.size() != 249) throw new IllegalStateException("Expected 249 sub divisions, got " + starts.size());
+        cachedDivisions = List.copyOf(starts);
+        return cachedDivisions;
+    }
+
     public static Chart compute(String dob, String tob, double lat, double lon, double tz) {
+        return compute(dob, tob, lat, lon, tz, null);
+    }
+
+    /** @param tz UTC offset in hours at birth. {@code division} is optional, 0 to 249, used when the birth date is not exact. */
+    public static Chart compute(String dob, String tob, double lat, double lon, double tz, Integer division) {
         String[] dp = dob.split("-");
         String[] tp = (tob == null || tob.isBlank() ? "00:00:00" : tob).split(":");
         long utcMs = java.time.LocalDateTime.of(Integer.parseInt(dp[0]), Integer.parseInt(dp[1]), Integer.parseInt(dp[2]),
@@ -223,10 +261,16 @@ public final class ScientificChartEngine {
         double[] tropCusps = placidus(ramc, lat, eps);
         double[] cuspLons = new double[12];
         for (int i = 0; i < 12; i++) cuspLons[i] = norm(tropCusps[i] - ayan);
+        if (division != null) {
+            if (division < 0 || division > 249) throw new IllegalArgumentException("Number must be from 0 to 249");
+            double shift = norm(divisionLongitude(division) - cuspLons[0]);
+            for (int i = 0; i < 12; i++) cuspLons[i] = norm(cuspLons[i] + shift);
+        }
 
         Chart c = new Chart();
         c.input.put("dob", dob); c.input.put("tob", tob); c.input.put("lat", lat); c.input.put("lon", lon); c.input.put("tz", tz);
         c.input.put("utc", Instant.ofEpochMilli(utcMs).toString());
+        if (division != null) c.input.put("division", division);
         c.ayanamsa.value = ayan;
         c.ayanamsa.dms = dms(ayan);
         for (int i = 0; i < 12; i++) {
@@ -287,9 +331,11 @@ public final class ScientificChartEngine {
         c.rulingPlanets.put("ascSignLord", asc.signLord);
         c.rulingPlanets.put("ascStarLord", asc.starLord);
         c.rulingPlanets.put("ascSubLord", asc.subLord);
+        c.rulingPlanets.put("ascSubSubLord", asc.subSubLord);
         c.rulingPlanets.put("moonSignLord", moon.signLord);
         c.rulingPlanets.put("moonStarLord", moon.starLord);
         c.rulingPlanets.put("moonSubLord", moon.subLord);
+        c.rulingPlanets.put("moonSubSubLord", moon.subSubLord);
 
         ZoneOffset zone = ZoneOffset.ofTotalSeconds((int) Math.round(tz * 3600));
         c.dasha = vimshottari(moon.longitude, utcMs, zone);
@@ -311,8 +357,8 @@ public final class ScientificChartEngine {
             }
         }
         c.currentDasha.label = String.join(" – ", java.util.stream.Stream.of(c.currentDasha.mahadasha, c.currentDasha.antardasha, c.currentDasha.pratyantar).filter(java.util.Objects::nonNull).toList());
-        c.ayanamsa.name = "Scientific sidereal";
-        c.input.put("chartName", "Scientific Chart");
+        c.ayanamsa.name = "Sidereal";
+        c.input.put("chartName", "Natal Chart");
 
         for (int i = 0; i < 12; i++) c.rasi.add(new ArrayList<>());
         for (Chart.Point p : c.planets) c.rasi.get((int) Math.floor(p.longitude / 30)).add(p.abbr + (Boolean.TRUE.equals(p.retrograde) ? "(R)" : ""));

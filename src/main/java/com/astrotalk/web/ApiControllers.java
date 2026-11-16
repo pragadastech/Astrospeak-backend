@@ -12,6 +12,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -71,6 +72,9 @@ class PublicController {
     Map<String, Object> tz(@RequestParam double lat, @RequestParam double lon, @RequestParam String dob, @RequestParam(defaultValue = "12:00:00") String tob) {
         return places.offset(lat, lon, dob, tob);
     }
+
+    @GetMapping("/referrals/{code}")
+    Map<String, Object> referral(@PathVariable String code) { return studio.openReferral(code); }
 }
 
 @RestController
@@ -84,6 +88,12 @@ class AuthController {
 
     @PostMapping("/start")
     Map<String, Object> start(@RequestBody JsonNode body, HttpServletResponse res) { return studio.start(body, res); }
+
+    @PostMapping("/forgot")
+    Map<String, Object> forgot(@RequestBody JsonNode body) {
+        studio.forgotPassword(body.path("email").asText());
+        return Map.of("ok", true);
+    }
 
     @PostMapping("/login")
     Map<String, Object> login(@RequestBody JsonNode body, HttpServletResponse res) {
@@ -118,6 +128,7 @@ class ClientController {
         m.put("profiles", studio.profilesOf(u));
         m.put("consultations", studio.myConsultations(u));
         m.put("reports", studio.myReports(u));
+        m.put("points", studio.pointsOf(u));
         return m;
     }
 
@@ -142,6 +153,19 @@ class ClientController {
     Map<String, Object> send(Authentication auth, @RequestBody JsonNode body) {
         Models.User u = studio.current(auth.getName());
         return studio.sendChat(u, studio.profile(u, body.path("profileId").asText(null)), body.path("message").asText());
+    }
+
+    @GetMapping("/referrals")
+    Map<String, Object> referrals(Authentication auth) { return studio.myReferrals(studio.current(auth.getName())); }
+
+    @PostMapping("/referrals")
+    Map<String, Object> refer(Authentication auth, @RequestBody JsonNode body) {
+        return studio.refer(studio.current(auth.getName()), body);
+    }
+
+    @PutMapping("/referrals/{id}")
+    Map<String, Object> updateReferral(Authentication auth, @PathVariable String id, @RequestBody JsonNode body) {
+        return studio.updateReferral(studio.current(auth.getName()), id, body);
     }
 
     @PostMapping("/consultations")
@@ -173,13 +197,14 @@ class AdminController {
     AdminController(StudioService studio, CatalogService catalog) { this.studio = studio; this.catalog = catalog; }
 
     @GetMapping("/stats")
-    Map<String, Object> stats() { return studio.stats(); }
+    Map<String, Object> stats() { allow("overview"); return studio.stats(); }
 
     @GetMapping("/customers")
-    Object customers() { return studio.customers(); }
+    Object customers() { allow("customers"); return studio.customers(); }
 
     @GetMapping("/customers/{id}")
     Map<String, Object> customer(@PathVariable String id) {
+        allow("customers");
         Models.User u = studio.current(id);
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("user", studio.publicUser(u));
@@ -193,30 +218,37 @@ class AdminController {
 
     @PostMapping("/employees")
     Map<String, Object> addEmployee(@RequestBody JsonNode body) {
-        return studio.addEmployee(body.path("fullName").asText(), body.path("email").asText());
+        return studio.addEmployee(body.path("fullName").asText(), body.path("email").asText(), body.path("permissions"));
+    }
+
+    @PutMapping("/employees/{id}")
+    Map<String, Object> saveEmployee(@PathVariable String id, @RequestBody JsonNode body) {
+        return studio.updateEmployee(id, body.path("fullName").asText(), body.path("permissions"));
     }
 
     @GetMapping("/consultations")
-    Object consultations() { return studio.allConsultations(); }
+    Object consultations() { allow("consults"); return studio.allConsultations(); }
 
     @PatchMapping("/consultations/{id}")
     Models.Consultation patch(@PathVariable String id, @RequestBody JsonNode body) {
+        allow("consults");
         return studio.updateConsultation(id, body.path("status").asText(null), body.path("meetingLink").asText(null), body.path("notes").asText(null));
     }
 
     @GetMapping("/reports")
-    Object reports() { return studio.allReports(); }
+    Object reports() { allow("reports"); return studio.allReports(); }
 
     @PostMapping(value = "/reports", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     Models.Report upload(Authentication auth, @RequestParam String userId, @RequestParam(required = false) String profileId, @RequestParam(required = false) String title, @RequestParam(required = false) String reportId, @RequestParam MultipartFile file) {
+        allow("reports");
         return studio.upload(userId, profileId, title, reportId, file, auth.getName());
     }
 
     @GetMapping("/notifications")
-    Object notifications() { return studio.allNotifications(); }
+    Object notifications() { allow("notes"); return studio.allNotifications(); }
 
     @GetMapping("/questions")
-    Object questions() { return studio.allQuestions(); }
+    Object questions() { allow("questions"); return studio.allQuestions(); }
 
     @PostMapping("/questions")
     Models.IntakeQuestion addQuestion(@RequestBody JsonNode body) { return studio.addQuestion(body.path("prompt").asText()); }
@@ -226,11 +258,12 @@ class AdminController {
 
     @GetMapping("/settings")
     Map<String, Object> settings() {
+        allow("settings");
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("businessState", catalog.businessState());
         m.put("states", CatalogService.STATES);
         m.put("plans", catalog.listAll());
-        m.put("smtp", "Microsoft 365 mailbox sales@avus24.com. Waiting for the app password.");
+        m.put("smtp", "Email is sent from tsgthanos@gmail.com through Gmail.");
         return m;
     }
 
@@ -267,6 +300,14 @@ class AdminController {
         String tagline = body.has("tagline") ? body.get("tagline").asText("") : null;
         return catalog.view(catalog.update(code, name, tagline, minutes, inr, usd, features, recommended, family, active));
     }
+
+    private Models.User actor() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null) throw new com.astrotalk.config.ApiException(401, "Please sign in");
+        return studio.current(auth.getName());
+    }
+
+    private void allow(String section) { studio.requireSection(actor(), section); }
 
     private static String featuresOf(JsonNode body) {
         if (body.has("features") && body.get("features").isArray()) {

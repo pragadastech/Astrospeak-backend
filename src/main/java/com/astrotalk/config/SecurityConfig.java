@@ -24,8 +24,9 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a
                         .requestMatchers("/api/health", "/api/config", "/api/plans", "/api/plans/**", "/api/places", "/api/tz", "/api/questions").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login", "/api/auth/start").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/admin/employees").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/referrals/*").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login", "/api/auth/start", "/api/auth/forgot").permitAll()
+                        .requestMatchers("/api/admin/employees", "/api/admin/employees/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/admin/questions").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/admin/questions/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/admin/plans").hasRole("ADMIN")
@@ -47,9 +48,13 @@ public class SecurityConfig {
     @Bean
     CorsConfigurationSource cors() {
         CorsConfiguration c = new CorsConfiguration();
-        c.setAllowedOrigins(List.of("http://localhost:5173", "http://127.0.0.1:5173"));
+        c.setAllowedOrigins(List.of(
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                "https://astrospeak-frontend.up.railway.app"));
         c.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         c.setAllowedHeaders(List.of("*"));
+        c.setExposedHeaders(List.of("Content-Disposition"));
         c.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", c);

@@ -1,6 +1,7 @@
 package com.astrotalk;
 
 import com.astrotalk.config.AppProperties;
+import com.astrotalk.config.DataSourceUrl;
 import com.astrotalk.domain.Repos;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -15,6 +16,7 @@ import java.util.TimeZone;
 public class AstroTalkApplication {
     public static void main(String[] args) {
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+        DataSourceUrl.apply();
         SpringApplication.run(AstroTalkApplication.class, args);
     }
 }

@@ -41,6 +41,18 @@ public class NotifyService {
         return sent;
     }
 
+    /** Staff sign-in details. The password is only in the email, never on the admin screen. */
+    public boolean employeeAccess(Models.User user, String password) {
+        String text = "Hello " + user.fullName + ",\n\nAn administrator created your Astrology Talk staff account.\n\nSign in with:\nEmail: " + user.email + "\nPassword: " + password + "\n\nAfter you sign in, you can change this password from your profile.\n\nAstrology Talk";
+        return email(user.email, "Your staff sign-in — Astrology Talk", text);
+    }
+
+    /** A new password for someone who used Forgot password. */
+    public boolean passwordReset(Models.User user, String password) {
+        String text = "Hello " + user.fullName + ",\n\nA new password was requested for your Astrology Talk account.\n\nSign in with:\nEmail: " + user.email + "\nPassword: " + password + "\n\nIf you did not ask for this, sign in and change the password.\n\nAstrology Talk";
+        return email(user.email, "Your new password — Astrology Talk", text);
+    }
+
     public void booking(Models.User user, Models.Consultation c) {
         String when = (c.preferredDate == null ? "" : c.preferredDate) + (c.preferredTime == null ? "" : " at " + c.preferredTime);
         String text = "Hello " + user.fullName + ",\n\nWe have your request for " + c.planName + " (" + c.durationMin + " minutes, live session on Google Meet).\nPreferred time: " + when + ".\n\nNo payment has been taken yet. The meeting link will be sent after the session is confirmed.\n\nThis message does not include your password or birth details.";
@@ -78,7 +90,7 @@ public class NotifyService {
         JavaMailSender sender = mail.getIfAvailable();
         if (sender == null || smtpPassword.isBlank()) {
             n.status = "SKIPPED";
-            n.error = "SMTP app password is not set yet. The mailbox will be sales@avus24.com on Microsoft 365 once the client shares the secret.";
+            n.error = "SMTP password is not set, so the email was not sent.";
             notifications.save(n);
             return false;
         }
@@ -100,8 +112,22 @@ public class NotifyService {
         return sent;
     }
 
-    private void whatsapp(String phone, String text) {
-        if (phone == null || phone.isBlank()) return;
+    /** Emails the referral note. Returns true when the message left the mail server. */
+    public boolean referralEmail(String to, String subject, String text) {
+        return email(to, subject, text);
+    }
+
+    /** Invite with a signup link. The password is never included. Returns SENT or SKIPPED. */
+    public String referralInvite(String phone, String referrerName, String guestName, String link) {
+        String text = "Hello " + guestName + ",\n\n"
+                + referrerName + " referred you to Astrology Talk.\n\n"
+                + "Open this link and create your account:\n" + link + "\n\n"
+                + "This message does not include a password.";
+        return whatsapp(phone, text);
+    }
+
+    private String whatsapp(String phone, String text) {
+        if (phone == null || phone.isBlank()) return "SKIPPED";
         Models.Notification n = row("WHATSAPP", phone, "WhatsApp", text);
         if (props.getWhatsappToken() == null || props.getWhatsappToken().isBlank() || props.getWhatsappPhoneId() == null || props.getWhatsappPhoneId().isBlank()) {
             n.status = "SKIPPED";
@@ -111,6 +137,7 @@ public class NotifyService {
             n.error = "WhatsApp token is present. Live sending is wired in the next pass so a bad template cannot fire during setup.";
         }
         notifications.save(n);
+        return n.status;
     }
 
     private Models.Notification row(String channel, String to, String subject, String text) {

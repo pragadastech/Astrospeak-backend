@@ -48,6 +48,18 @@ public final class Repos {
 
     public interface SettingRepo extends JpaRepository<Models.Setting, String> {}
 
+    public interface ReferralRepo extends JpaRepository<Models.Referral, String> {
+        Optional<Models.Referral> findByCode(String code);
+        Optional<Models.Referral> findByEmailIgnoreCase(String email);
+        Optional<Models.Referral> findByPhoneKey(String phoneKey);
+        Optional<Models.Referral> findByJoinedUserId(String joinedUserId);
+        List<Models.Referral> findByReferrerIdOrderByCreatedAtDesc(String referrerId);
+    }
+
+    public interface PointRepo extends JpaRepository<Models.PointEntry, String> {
+        List<Models.PointEntry> findByUserIdOrderByCreatedAtDesc(String userId);
+    }
+
     public interface QuestionRepo extends JpaRepository<Models.IntakeQuestion, String> {
         List<Models.IntakeQuestion> findByActiveTrueOrderBySortOrderAsc();
         List<Models.IntakeQuestion> findAllByOrderBySortOrderAsc();
