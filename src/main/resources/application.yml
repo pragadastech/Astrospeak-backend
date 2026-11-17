@@ -34,3 +34,14 @@ astro:
   whatsapp-token: ${WHATSAPP_TOKEN:}
   whatsapp-phone-id: ${WHATSAPP_PHONE_ID:}
   public-url: ${PUBLIC_URL:http://localhost:5173}
+  api-url: ${API_URL:https://api.astrogreet.com}
+  legacy-api-url: ${LEGACY_API_URL:https://astrospeak-backend.up.railway.app}
+  cors-origins:
+    - http://localhost:5173
+    - http://127.0.0.1:5173
+    - https://astrospeak-frontend.up.railway.app
+    - https://astrogreet.com
+    - https://www.astrogreet.com
+    - https://astrogreet.in
+    - https://www.astrogreet.in
+    - https://api.astrogreet.com

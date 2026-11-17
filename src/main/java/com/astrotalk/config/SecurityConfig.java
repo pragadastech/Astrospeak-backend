@@ -46,12 +46,9 @@ public class SecurityConfig {
     PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
 
     @Bean
-    CorsConfigurationSource cors() {
+    CorsConfigurationSource cors(AppProperties props) {
         CorsConfiguration c = new CorsConfiguration();
-        c.setAllowedOrigins(List.of(
-                "http://localhost:5173",
-                "http://127.0.0.1:5173",
-                "https://astrospeak-frontend.up.railway.app"));
+        c.setAllowedOrigins(props.getCorsOrigins());
         c.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         c.setAllowedHeaders(List.of("*"));
         c.setExposedHeaders(List.of("Content-Disposition"));

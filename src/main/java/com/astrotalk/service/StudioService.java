@@ -14,6 +14,8 @@ import org.springframework.http.ResponseCookie;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.security.SecureRandom;
@@ -830,9 +832,18 @@ public class StudioService {
     }
 
     private String publicUrl() {
+        String requested = requestOrigin();
+        if (requested != null && props.getCorsOrigins() != null && props.getCorsOrigins().contains(requested)) return requested;
         String url = props.getPublicUrl();
         if (url == null || url.isBlank()) url = "http://localhost:5173";
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+    }
+
+    private String requestOrigin() {
+        if (!(RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes web)) return null;
+        String origin = web.getRequest().getHeader("Origin");
+        if (origin == null || origin.isBlank()) return null;
+        return origin.endsWith("/") ? origin.substring(0, origin.length() - 1) : origin;
     }
 
     private String referralCode() {
