@@ -673,7 +673,7 @@ public class StudioService {
         ref.status = "invited";
         ref.signupLink = link;
         ref.message = referralMessage(u, name, text(body, "message"), link);
-        if (!notify.referralEmail(email, u.fullName + " referred you to Astrogreet", ref.message)) {
+        if (!notify.referralEmail(email, u.fullName + " referred you to AstroGreet", ref.message)) {
             throw new ApiException(502, "The email could not be sent. Try again in a moment.");
         }
         ref.emailStatus = "SENT";
@@ -687,7 +687,7 @@ public class StudioService {
         if (!u.id.equals(ref.referrerId)) throw new ApiException(404, "Referral not found");
         if (!"invited".equals(ref.status)) throw new ApiException(400, "They have already signed up");
         ref.message = referralMessage(u, ref.fullName, text(body, "message"), ref.signupLink);
-        if (!notify.referralEmail(ref.email, u.fullName + " referred you to Astrogreet", ref.message)) {
+        if (!notify.referralEmail(ref.email, u.fullName + " referred you to AstroGreet", ref.message)) {
             throw new ApiException(502, "The email could not be sent. Try again in a moment.");
         }
         ref.emailStatus = "SENT";
@@ -822,7 +822,7 @@ public class StudioService {
     private String referralMessage(Models.User referrer, String guest, String written, String link) {
         String text = written == null ? "" : written.trim();
         if (text.isBlank()) {
-            text = "Hello " + guest + ",\n\n" + referrer.fullName + " referred you to Astrogreet. Open the link in this email and create your account. Your natal chart is ready as soon as you sign up.";
+            text = "Hello " + guest + ",\n\n" + referrer.fullName + " referred you to AstroGreet. Open the link in this email and create your account. Your Vedic chart is ready as soon as you sign up.";
         }
         if (text.length() > 2000) throw new ApiException(400, "Keep the message under 2000 characters");
         if (link != null && !text.contains(link)) text = text + "\n\n" + link;

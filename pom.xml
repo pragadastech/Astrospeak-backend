@@ -11,8 +11,8 @@
   <groupId>com.astrotalk</groupId>
   <artifactId>astrogreet</artifactId>
   <version>1.0.0</version>
-  <name>Astrogreet</name>
-  <description>Astrogreet — Spring Boot API, PostgreSQL, scientific charts</description>
+  <name>AstroGreet</name>
+  <description>AstroGreet — Vedic astrology, daily wishes and expert guidance</description>
   <properties>
     <java.version>17</java.version>
   </properties>

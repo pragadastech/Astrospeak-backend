@@ -40,12 +40,12 @@ class PublicController {
     }
 
     @GetMapping("/health")
-    Map<String, Object> health() { return Map.of("ok", true, "service", "Astrogreet"); }
+    Map<String, Object> health() { return Map.of("ok", true, "service", "AstroGreet"); }
 
     @GetMapping("/config")
     Map<String, Object> config() {
         Map<String, Object> m = new LinkedHashMap<>();
-        m.put("brand", "Astrogreet");
+        m.put("brand", "AstroGreet");
         m.put("businessState", catalog.businessState());
         m.put("states", CatalogService.STATES);
         m.put("gst", "Indian invoices add 18% GST: 9% CGST + 9% SGST inside the business state, 18% IGST for other Indian states.");
