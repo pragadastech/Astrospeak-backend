@@ -9,10 +9,10 @@
     <relativePath/>
   </parent>
   <groupId>com.astrotalk</groupId>
-  <artifactId>astrology-talk</artifactId>
+  <artifactId>astrogreet</artifactId>
   <version>1.0.0</version>
-  <name>Astrology Talk</name>
-  <description>Astrology Talk — Spring Boot API, PostgreSQL, scientific charts</description>
+  <name>Astrogreet</name>
+  <description>Astrogreet — Spring Boot API, PostgreSQL, scientific charts</description>
   <properties>
     <java.version>17</java.version>
   </properties>

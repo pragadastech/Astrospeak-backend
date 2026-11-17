@@ -26,37 +26,37 @@ public class NotifyService {
     }
 
     public void welcome(Models.User user) {
-        String text = "Hello " + user.fullName + ",\n\nYour Astrology Talk account is ready. Sign in with this email address.\n\nWe never send a password by email. If you did not create this account, you can ignore this message.";
-        dispatch(user.email, user.phone, "Your Astrology Talk account is ready", text);
+        String text = "Hello " + user.fullName + ",\n\nYour Astrogreet account is ready. Sign in with this email address.\n\nWe never send a password by email. If you did not create this account, you can ignore this message.";
+        dispatch(user.email, user.phone, "Your Astrogreet account is ready", text);
     }
 
     /** Welcome written for the landing-page start. Returns true when the email actually left the server. */
     public boolean accountCreated(Models.User user, String password) {
         String phone = user.phone == null || user.phone.isBlank() ? "—" : user.phone;
-        String text = "Hello " + user.fullName + ",\n\nYour account is created.\n\nThese are your sign-in details:\nName: " + user.fullName + "\nEmail: " + user.email + "\nPhone: " + phone + "\nPassword: " + password + "\n\nSign in with this email and password to open your scientific chart.\n\nAstrology Talk";
-        boolean sent = email(user.email, "Your account is created — Astrology Talk", text);
+        String text = "Hello " + user.fullName + ",\n\nYour account is created.\n\nThese are your sign-in details:\nName: " + user.fullName + "\nEmail: " + user.email + "\nPhone: " + phone + "\nPassword: " + password + "\n\nSign in with this email and password to open your scientific chart.\n\nAstrogreet";
+        boolean sent = email(user.email, "Your account is created — Astrogreet", text);
         if (user.phone != null && !user.phone.isBlank()) {
-            whatsapp(user.phone, "Your Astrology Talk account is created. We sent the sign-in details to " + user.email + ".");
+            whatsapp(user.phone, "Your Astrogreet account is created. We sent the sign-in details to " + user.email + ".");
         }
         return sent;
     }
 
     /** Staff sign-in details. The password is only in the email, never on the admin screen. */
     public boolean employeeAccess(Models.User user, String password) {
-        String text = "Hello " + user.fullName + ",\n\nAn administrator created your Astrology Talk staff account.\n\nSign in with:\nEmail: " + user.email + "\nPassword: " + password + "\n\nAfter you sign in, you can change this password from your profile.\n\nAstrology Talk";
-        return email(user.email, "Your staff sign-in — Astrology Talk", text);
+        String text = "Hello " + user.fullName + ",\n\nAn administrator created your Astrogreet staff account.\n\nSign in with:\nEmail: " + user.email + "\nPassword: " + password + "\n\nAfter you sign in, you can change this password from your profile.\n\nAstrogreet";
+        return email(user.email, "Your staff sign-in — Astrogreet", text);
     }
 
     /** A new password for someone who used Forgot password. */
     public boolean passwordReset(Models.User user, String password) {
-        String text = "Hello " + user.fullName + ",\n\nA new password was requested for your Astrology Talk account.\n\nSign in with:\nEmail: " + user.email + "\nPassword: " + password + "\n\nIf you did not ask for this, sign in and change the password.\n\nAstrology Talk";
-        return email(user.email, "Your new password — Astrology Talk", text);
+        String text = "Hello " + user.fullName + ",\n\nA new password was requested for your Astrogreet account.\n\nSign in with:\nEmail: " + user.email + "\nPassword: " + password + "\n\nIf you did not ask for this, sign in and change the password.\n\nAstrogreet";
+        return email(user.email, "Your new password — Astrogreet", text);
     }
 
     public void booking(Models.User user, Models.Consultation c) {
         String when = (c.preferredDate == null ? "" : c.preferredDate) + (c.preferredTime == null ? "" : " at " + c.preferredTime);
         String text = "Hello " + user.fullName + ",\n\nWe have your request for " + c.planName + " (" + c.durationMin + " minutes, live session on Google Meet).\nPreferred time: " + when + ".\n\nNo payment has been taken yet. The meeting link will be sent after the session is confirmed.\n\nThis message does not include your password or birth details.";
-        dispatch(user.email, user.phone, "Consultation request received — Astrology Talk", text);
+        dispatch(user.email, user.phone, "Consultation request received — Astrogreet", text);
     }
 
     /** Tells the administrator who booked a future reading and what they answered, so the session can be connected. */
@@ -77,7 +77,7 @@ public class NotifyService {
 
     public void meeting(Models.User user, Models.Consultation c) {
         String text = "Hello " + user.fullName + ",\n\nYour " + c.planName + " session is " + c.status + ".\nMeeting link: " + (c.meetingLink == null ? "" : c.meetingLink) + "\n\nThis message does not include your password or birth details.";
-        dispatch(user.email, user.phone, "Your live session — Astrology Talk", text);
+        dispatch(user.email, user.phone, "Your live session — Astrogreet", text);
     }
 
     private void dispatch(String email, String phone, String subject, String text) {
@@ -120,7 +120,7 @@ public class NotifyService {
     /** Invite with a signup link. The password is never included. Returns SENT or SKIPPED. */
     public String referralInvite(String phone, String referrerName, String guestName, String link) {
         String text = "Hello " + guestName + ",\n\n"
-                + referrerName + " referred you to Astrology Talk.\n\n"
+                + referrerName + " referred you to Astrogreet.\n\n"
                 + "Open this link and create your account:\n" + link + "\n\n"
                 + "This message does not include a password.";
         return whatsapp(phone, text);

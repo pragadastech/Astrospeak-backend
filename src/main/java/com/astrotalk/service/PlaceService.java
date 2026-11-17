@@ -40,7 +40,7 @@ public class PlaceService {
             String url = "https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=8&q=" + URLEncoder.encode(query, StandardCharsets.UTF_8);
             HttpRequest req = HttpRequest.newBuilder(URI.create(url))
                     .timeout(Duration.ofSeconds(8))
-                    .header("User-Agent", "AstrologyTalk/1.0 (" + props.getMailFrom() + ")")
+                    .header("User-Agent", "Astrogreet/1.0 (" + props.getMailFrom() + ")")
                     .header("Accept", "application/json")
                     .GET().build();
             HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
