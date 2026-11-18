@@ -33,7 +33,7 @@ public class NotifyService {
     /** Welcome written for the landing-page start. Returns true when the email actually left the server. */
     public boolean accountCreated(Models.User user, String password) {
         String phone = user.phone == null || user.phone.isBlank() ? "—" : user.phone;
-        String text = "Hello " + user.fullName + ",\n\nYour account is created.\n\nThese are your sign-in details:\nName: " + user.fullName + "\nEmail: " + user.email + "\nPhone: " + phone + "\nPassword: " + password + "\n\nSign in with this email and password for Vedic astrology, daily wishes and expert guidance.\n\nAstroGreet";
+        String text = "Hello " + user.fullName + ",\n\nYour account is created.\n\nThese are your sign-in details:\nName: " + user.fullName + "\nEmail: " + user.email + "\nPhone: " + phone + "\nPassword: " + password + "\n\nYour password is your mobile number. Sign in with this email and that number for Vedic astrology, daily wishes and expert guidance.\n\nAstroGreet";
         boolean sent = email(user.email, "Your account is created — AstroGreet", text);
         if (user.phone != null && !user.phone.isBlank()) {
             whatsapp(user.phone, "Your AstroGreet account is created. We sent the sign-in details to " + user.email + ".");

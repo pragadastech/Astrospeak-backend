@@ -127,9 +127,9 @@ public class StudioService {
         String phone = text(body, "phone");
         if (!email.contains("@") || email.length() > 120) throw new ApiException(400, "Enter a valid email");
         if (name.isBlank() || name.length() > 80) throw new ApiException(400, "Enter the full name");
-        if (phone.replaceAll("\\D", "").length() < 8) throw new ApiException(400, "Enter a phone number");
+        String password = phone.replaceAll("\\D", "");
+        if (password.length() < 8) throw new ApiException(400, "Enter a phone number");
         if (users.findByEmailIgnoreCase(email).isPresent()) throw new ApiException(409, "This email already has an account. Sign in to continue.");
-        String password = generatedPassword();
         Models.User user = new Models.User();
         user.role = "CLIENT";
         user.accountType = "INDIVIDUAL";
@@ -535,13 +535,6 @@ public class StudioService {
         }
         if (sb.length() == 0) return null;
         return sb.length() > 4000 ? sb.substring(0, 4000) : sb.toString();
-    }
-
-    private String generatedPassword() {
-        String alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-        StringBuilder s = new StringBuilder();
-        for (int i = 0; i < 10; i++) s.append(alphabet.charAt(RND.nextInt(alphabet.length())));
-        return s.toString();
     }
 
     private Models.Profile saveProfile(Models.User user, String relation, String name, String gender, JsonNode birth) {
