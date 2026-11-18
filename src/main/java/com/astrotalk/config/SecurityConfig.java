@@ -18,9 +18,9 @@ import java.util.List;
 @Configuration
 public class SecurityConfig {
     @Bean
-    SecurityFilterChain chain(HttpSecurity http, JwtFilter jwt) throws Exception {
+    SecurityFilterChain chain(HttpSecurity http, JwtFilter jwt, CorsConfigurationSource corsSource) throws Exception {
         http.csrf(csrf -> csrf.disable())
-                .cors(cors -> cors.configurationSource(cors()))
+                .cors(cors -> cors.configurationSource(corsSource))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a
                         .requestMatchers("/api/health", "/api/config", "/api/plans", "/api/plans/**", "/api/places", "/api/tz", "/api/questions").permitAll()
@@ -46,7 +46,7 @@ public class SecurityConfig {
     PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
 
     @Bean
-    CorsConfigurationSource cors(AppProperties props) {
+    CorsConfigurationSource corsSource(AppProperties props) {
         CorsConfiguration c = new CorsConfiguration();
         c.setAllowedOrigins(props.getCorsOrigins());
         c.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
