@@ -30,15 +30,21 @@ public class NotifyService {
         dispatch(user.email, user.phone, "Your AstroGreet account is ready", text);
     }
 
-    /** Welcome written for the landing-page start. Returns true when the email actually left the server. */
-    public boolean accountCreated(Models.User user, String password) {
+    /** Welcome written for the landing-page start. Dispatches to both registered Email and WhatsApp channels. */
+    public java.util.Map<String, Object> accountCreated(Models.User user, String password) {
         String phone = user.phone == null || user.phone.isBlank() ? "—" : user.phone;
         String text = "Hello " + user.fullName + ",\n\nYour account is created.\n\nThese are your sign-in details:\nName: " + user.fullName + "\nEmail: " + user.email + "\nPhone: " + phone + "\nPassword: " + password + "\n\nYour password is your mobile number. Sign in with this email and that number for Vedic astrology, daily wishes and expert guidance.\n\nAstroGreet";
-        boolean sent = email(user.email, "Your account is created — AstroGreet", text);
+        boolean emailSent = email(user.email, "Your account is created — AstroGreet", text);
+        String waStatus = "SKIPPED";
         if (user.phone != null && !user.phone.isBlank()) {
-            whatsapp(user.phone, "Your AstroGreet account is created. We sent the sign-in details to " + user.email + ".");
+            String waText = "Hello " + user.fullName + ",\n\nYour AstroGreet account is created.\n\nSign-in details:\nEmail: " + user.email + "\nPassword: " + password + "\n\nPlease check your email inbox or WhatsApp for your sign-in details.\n\nAstroGreet";
+            waStatus = whatsapp(user.phone, waText);
         }
-        return sent;
+        java.util.Map<String, Object> statusMap = new java.util.LinkedHashMap<>();
+        statusMap.put("emailSent", emailSent);
+        statusMap.put("whatsappStatus", waStatus);
+        statusMap.put("message", "Please check your email inbox or WhatsApp for your sign-in details.");
+        return statusMap;
     }
 
     /** Staff sign-in details. The password is only in the email, never on the admin screen. */

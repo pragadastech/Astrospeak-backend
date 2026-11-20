@@ -51,6 +51,22 @@ public final class Models {
         @Column(length = 300) public String permissions;
         /** Client who referred this account, set when they sign up from that invite. */
         public String referredBy;
+        /** Mandatory lead source: YouTube, Instagram, Referral */
+        public String source;
+        /** Referrer code or details when source is Referral */
+        @Column(length = 400) public String referralDetails;
+        /** Employee ID assigned to this customer/lead */
+        public String assignedTo;
+        /** Employee name assigned to this customer/lead */
+        public String assignedToName;
+        /** Lead conversion status: NEW, CONTACTED, CONVERTED, CLOSED */
+        public String leadStatus = "NEW";
+        /** Lead conversion timestamp */
+        public String convertedAt;
+        /** Plan code selected during registration or conversion */
+        public String selectedPlan;
+        /** Plan name selected during registration or conversion */
+        public String selectedPlanName;
 
         protected String prefix() { return "usr"; }
     }
@@ -219,5 +235,40 @@ public final class Models {
     public static class Setting {
         @Id @Column(length = 80) public String key;
         @Column(length = 2000) public String value;
+    }
+
+    @Entity @Table(name = "commission_rates")
+    public static class CommissionRate extends Base {
+        /** Lead source: YouTube, Instagram, Referral */
+        @Column(unique = true, length = 80) public String source;
+        /** Commission percentage (e.g., 10.0 for 10%) */
+        public double ratePercent;
+        /** Fixed amount fallback if configured */
+        public long fixedMinor;
+        /** Admin user who updated the rate */
+        public String updatedBy;
+
+        protected String prefix() { return "crt"; }
+    }
+
+    @Entity @Table(name = "commission_records")
+    public static class CommissionRecord extends Base {
+        public String customerId;
+        public String customerName;
+        public String consultationId;
+        public String planCode;
+        public String planName;
+        public String source;
+        /** The exact commission percentage locked in at conversion/calculation time */
+        public double appliedRatePercent;
+        /** Commissionable base amount in minor units */
+        public long baseAmountMinor;
+        /** Computed commission amount in minor units */
+        public long commissionAmountMinor;
+        public String assignedEmployeeId;
+        public String assignedEmployeeName;
+        public String monthKey; // e.g. "2026-11"
+
+        protected String prefix() { return "com"; }
     }
 }

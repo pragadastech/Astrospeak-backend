@@ -39,13 +39,15 @@ public class StudioService {
     private final Repos.QuestionRepo questions;
     private final Repos.ReferralRepo referrals;
     private final Repos.PointRepo points;
+    private final Repos.CommissionRateRepo commissionRates;
+    private final Repos.CommissionRecordRepo commissionRecords;
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final CatalogService catalog;
     private final NotifyService notify;
     private final AppProperties props;
 
-    public StudioService(Repos.UserRepo users, Repos.ProfileRepo profiles, Repos.ConsultationRepo consultations, Repos.ReportRepo reports, Repos.ReportFileRepo files, Repos.ChatRepo chats, Repos.MemoryRepo memories, Repos.NotificationRepo notifications, Repos.QuestionRepo questions, Repos.ReferralRepo referrals, Repos.PointRepo points, PasswordEncoder encoder, JwtService jwt, CatalogService catalog, NotifyService notify, AppProperties props) {
+    public StudioService(Repos.UserRepo users, Repos.ProfileRepo profiles, Repos.ConsultationRepo consultations, Repos.ReportRepo reports, Repos.ReportFileRepo files, Repos.ChatRepo chats, Repos.MemoryRepo memories, Repos.NotificationRepo notifications, Repos.QuestionRepo questions, Repos.ReferralRepo referrals, Repos.PointRepo points, Repos.CommissionRateRepo commissionRates, Repos.CommissionRecordRepo commissionRecords, PasswordEncoder encoder, JwtService jwt, CatalogService catalog, NotifyService notify, AppProperties props) {
         this.users = users;
         this.profiles = profiles;
         this.consultations = consultations;
@@ -57,6 +59,8 @@ public class StudioService {
         this.questions = questions;
         this.referrals = referrals;
         this.points = points;
+        this.commissionRates = commissionRates;
+        this.commissionRecords = commissionRecords;
         this.encoder = encoder;
         this.jwt = jwt;
         this.catalog = catalog;
@@ -68,6 +72,7 @@ public class StudioService {
     public void seedAdmin() {
         catalog.seed();
         seedQuestions();
+        seedCommissionRates();
         if (users.findByEmailIgnoreCase(props.getAdminEmail()).isPresent()) return;
         Models.User admin = new Models.User();
         admin.role = "ADMIN";
@@ -77,6 +82,27 @@ public class StudioService {
         admin.passwordHash = encoder.encode(props.getAdminPassword());
         admin.billingState = catalog.businessState();
         users.save(admin);
+    }
+
+    private void seedCommissionRates() {
+        if (commissionRates.findBySourceIgnoreCase("YouTube").isEmpty()) {
+            Models.CommissionRate r = new Models.CommissionRate();
+            r.source = "YouTube";
+            r.ratePercent = 10.0;
+            commissionRates.save(r);
+        }
+        if (commissionRates.findBySourceIgnoreCase("Instagram").isEmpty()) {
+            Models.CommissionRate r = new Models.CommissionRate();
+            r.source = "Instagram";
+            r.ratePercent = 20.0;
+            commissionRates.save(r);
+        }
+        if (commissionRates.findBySourceIgnoreCase("Referral").isEmpty()) {
+            Models.CommissionRate r = new Models.CommissionRate();
+            r.source = "Referral";
+            r.ratePercent = 15.0; // default configurable referral commission
+            commissionRates.save(r);
+        }
     }
 
     @Transactional
@@ -119,33 +145,46 @@ public class StudioService {
         return out;
     }
 
-    /** Landing-page start. The visitor never picks a password; we create the account and email the sign-in details. */
+    /** Landing-page start. The visitor never picks a password; we create the account and send the sign-in details. */
     @Transactional
     public Map<String, Object> start(JsonNode body, HttpServletResponse res) {
         String email = text(body, "email").toLowerCase();
         String name = text(body, "fullName");
         String phone = text(body, "phone");
+        String source = text(body, "source");
+        String referralDetails = text(body, "referralDetails");
+
         if (!email.contains("@") || email.length() > 120) throw new ApiException(400, "Enter a valid email");
         if (name.isBlank() || name.length() > 80) throw new ApiException(400, "Enter the full name");
         String password = phone.replaceAll("\\D", "");
         if (password.length() < 8) throw new ApiException(400, "Enter a phone number");
         if (users.findByEmailIgnoreCase(email).isPresent()) throw new ApiException(409, "This email already has an account. Sign in to continue.");
+        if (source == null || source.isBlank()) throw new ApiException(400, "Please select how you heard about us (Lead source is required)");
+        if ("Referral".equalsIgnoreCase(source) && (referralDetails == null || referralDetails.isBlank())) {
+            throw new ApiException(400, "Please enter your referral code or referrer details");
+        }
+
         Models.User user = new Models.User();
         user.role = "CLIENT";
         user.accountType = "INDIVIDUAL";
         user.fullName = name;
         user.email = email;
         user.phone = phone.trim();
+        user.source = source.trim();
+        user.referralDetails = referralDetails.trim();
+        user.leadStatus = "NEW";
         user.billingState = catalog.businessState();
         user.passwordHash = encoder.encode(password);
         users.save(user);
+
         saveProfile(user, "Self", name, "", body.path("birth"));
         attachReferral(user, body);
-        boolean emailed = notify.accountCreated(user, password);
+
+        Map<String, Object> notifyStatus = notify.accountCreated(user, password);
         Map<String, Object> out = publicUser(user);
         out.put("token", issueTabToken(res, user));
-        out.put("emailed", emailed);
-        if (!emailed) out.put("password", password);
+        out.put("notificationStatus", notifyStatus);
+        out.put("message", notifyStatus.get("message"));
         return out;
     }
 
@@ -206,6 +245,15 @@ public class StudioService {
         m.put("email", u.email);
         m.put("phone", u.phone);
         m.put("billingState", u.billingState);
+        m.put("source", u.source);
+        m.put("referralDetails", u.referralDetails);
+        m.put("assignedTo", u.assignedTo);
+        m.put("assignedToName", u.assignedToName);
+        m.put("leadStatus", u.leadStatus);
+        m.put("convertedAt", u.convertedAt);
+        m.put("selectedPlan", u.selectedPlan);
+        m.put("selectedPlanName", u.selectedPlanName);
+        m.put("createdAt", u.createdAt);
         m.put("permissions", sectionsOf(u));
         return m;
     }
@@ -471,6 +519,110 @@ public class StudioService {
 
     public List<Models.Consultation> myConsultations(Models.User u) { return consultations.findByUserIdOrderByCreatedAtDesc(u.id); }
     public List<Models.User> customers() { return users.findByRoleOrderByCreatedAtDesc("CLIENT"); }
+
+    public List<Models.User> customersForActor(Models.User actor) {
+        if ("ADMIN".equals(actor.role)) {
+            return users.findByRoleOrderByCreatedAtDesc("CLIENT");
+        }
+        return users.findByRoleAndAssignedToOrderByCreatedAtDesc("CLIENT", actor.id);
+    }
+
+    @Transactional
+    public Models.User assignCustomer(Models.User actor, String customerId, String employeeId) {
+        Models.User customer = users.findById(customerId).orElseThrow(() -> new ApiException(404, "Customer not found"));
+        if (!"CLIENT".equals(customer.role)) throw new ApiException(400, "Target user is not a customer");
+
+        // Role permissions: Admin can assign to anyone or self. Employees can self-assign or assign if allowed.
+        if (!"ADMIN".equals(actor.role)) {
+            if (!actor.id.equals(employeeId) && !actor.id.equals(customer.assignedTo)) {
+                throw new ApiException(403, "You can only assign customers to yourself");
+            }
+        }
+
+        if (employeeId == null || employeeId.isBlank()) {
+            customer.assignedTo = null;
+            customer.assignedToName = null;
+        } else {
+            Models.User employee = users.findById(employeeId).orElseThrow(() -> new ApiException(404, "Employee not found"));
+            customer.assignedTo = employee.id;
+            customer.assignedToName = employee.fullName;
+        }
+        return users.save(customer);
+    }
+
+    @Transactional
+    public Models.User updateCustomerLead(Models.User actor, String customerId, String leadStatus, String selectedPlan, String selectedPlanName) {
+        Models.User customer = users.findById(customerId).orElseThrow(() -> new ApiException(404, "Customer not found"));
+        if (!"ADMIN".equals(actor.role) && !actor.id.equals(customer.assignedTo)) {
+            throw new ApiException(403, "Permission denied for this customer");
+        }
+        if (leadStatus != null && !leadStatus.isBlank()) {
+            customer.leadStatus = leadStatus.toUpperCase();
+            if ("CONVERTED".equalsIgnoreCase(leadStatus) && customer.convertedAt == null) {
+                customer.convertedAt = java.time.Instant.now().toString();
+            }
+        }
+        if (selectedPlan != null) customer.selectedPlan = selectedPlan;
+        if (selectedPlanName != null) customer.selectedPlanName = selectedPlanName;
+
+        // Auto-calculate commission if converted
+        if ("CONVERTED".equalsIgnoreCase(customer.leadStatus)) {
+            recordCommissionForLead(customer);
+        }
+
+        return users.save(customer);
+    }
+
+    private void recordCommissionForLead(Models.User customer) {
+        if (customer.source == null || customer.source.isBlank()) return;
+        String monthKey = java.time.LocalDate.now().toString().substring(0, 7); // e.g. "2026-11"
+        // Find rate
+        Models.CommissionRate rate = commissionRates.findBySourceIgnoreCase(customer.source).orElse(null);
+        double ratePct = rate != null ? rate.ratePercent : ("Instagram".equalsIgnoreCase(customer.source) ? 20.0 : 10.0);
+        long baseAmount = 100000L; // default ₹1,000 in minor units (paise)
+        if (customer.selectedPlan != null && !customer.selectedPlan.isBlank()) {
+            try {
+                Models.Plan p = catalog.require(customer.selectedPlan);
+                if (p.priceInr > 0) {
+                    baseAmount = (long) p.priceInr * 100L;
+                }
+            } catch (Exception ignored) {}
+        }
+        long comm = Math.round(baseAmount * (ratePct / 100.0));
+        Models.CommissionRecord rec = new Models.CommissionRecord();
+        rec.customerId = customer.id;
+        rec.customerName = customer.fullName;
+        rec.source = customer.source;
+        rec.planCode = customer.selectedPlan;
+        rec.planName = customer.selectedPlanName;
+        rec.appliedRatePercent = ratePct;
+        rec.baseAmountMinor = baseAmount;
+        rec.commissionAmountMinor = comm;
+        rec.assignedEmployeeId = customer.assignedTo;
+        rec.assignedEmployeeName = customer.assignedToName;
+        rec.monthKey = monthKey;
+        commissionRecords.save(rec);
+    }
+
+    public List<Models.CommissionRate> allCommissionRates() {
+        return commissionRates.findAll();
+    }
+
+    @Transactional
+    public Models.CommissionRate updateCommissionRate(String source, double ratePercent, String adminName) {
+        Models.CommissionRate rate = commissionRates.findBySourceIgnoreCase(source).orElseGet(() -> {
+            Models.CommissionRate cr = new Models.CommissionRate();
+            cr.source = source;
+            return cr;
+        });
+        rate.ratePercent = ratePercent;
+        rate.updatedBy = adminName;
+        return commissionRates.save(rate);
+    }
+
+    public List<Models.CommissionRecord> allCommissionRecords() {
+        return commissionRecords.findAllByOrderByCreatedAtDesc();
+    }
     public List<Map<String, Object>> employees() {
         List<Map<String, Object>> out = new ArrayList<>();
         for (Models.User u : users.findByRoleOrderByCreatedAtDesc("EMPLOYEE")) out.add(publicUser(u));

@@ -200,7 +200,47 @@ class AdminController {
     Map<String, Object> stats() { allow("overview"); return studio.stats(); }
 
     @GetMapping("/customers")
-    Object customers() { allow("customers"); return studio.customers(); }
+    Object customers() {
+        allow("customers");
+        return studio.customersForActor(actor());
+    }
+
+    @PatchMapping("/customers/{id}/assign")
+    Map<String, Object> assignCustomer(@PathVariable String id, @RequestBody JsonNode body) {
+        allow("customers");
+        String employeeId = body.hasNonNull("employeeId") ? body.get("employeeId").asText() : null;
+        Models.User updated = studio.assignCustomer(actor(), id, employeeId);
+        return studio.publicUser(updated);
+    }
+
+    @PatchMapping("/customers/{id}/lead")
+    Map<String, Object> updateLead(@PathVariable String id, @RequestBody JsonNode body) {
+        allow("customers");
+        String status = body.hasNonNull("leadStatus") ? body.get("leadStatus").asText() : null;
+        String planCode = body.hasNonNull("selectedPlan") ? body.get("selectedPlan").asText() : null;
+        String planName = body.hasNonNull("selectedPlanName") ? body.get("selectedPlanName").asText() : null;
+        Models.User updated = studio.updateCustomerLead(actor(), id, status, planCode, planName);
+        return studio.publicUser(updated);
+    }
+
+    @GetMapping("/commissions/rates")
+    Object commissionRates() {
+        allow("reports");
+        return studio.allCommissionRates();
+    }
+
+    @PutMapping("/commissions/rates/{source}")
+    Models.CommissionRate updateCommissionRate(@PathVariable String source, @RequestBody JsonNode body) {
+        if (!"ADMIN".equals(actor().role)) throw new com.astrotalk.config.ApiException(403, "Only Admin can edit commission rates");
+        double rate = body.path("ratePercent").asDouble(10.0);
+        return studio.updateCommissionRate(source, rate, actor().fullName);
+    }
+
+    @GetMapping("/commissions/records")
+    Object commissionRecords() {
+        allow("reports");
+        return studio.allCommissionRecords();
+    }
 
     @GetMapping("/customers/{id}")
     Map<String, Object> customer(@PathVariable String id) {

@@ -11,7 +11,9 @@ public final class Repos {
     public interface UserRepo extends JpaRepository<Models.User, String> {
         Optional<Models.User> findByEmailIgnoreCase(String email);
         List<Models.User> findByRoleOrderByCreatedAtDesc(String role);
+        List<Models.User> findByRoleAndAssignedToOrderByCreatedAtDesc(String role, String assignedTo);
         long countByRole(String role);
+        long countByRoleAndLeadStatus(String role, String leadStatus);
     }
 
     public interface ProfileRepo extends JpaRepository<Models.Profile, String> {
@@ -63,5 +65,16 @@ public final class Repos {
     public interface QuestionRepo extends JpaRepository<Models.IntakeQuestion, String> {
         List<Models.IntakeQuestion> findByActiveTrueOrderBySortOrderAsc();
         List<Models.IntakeQuestion> findAllByOrderBySortOrderAsc();
+    }
+
+    public interface CommissionRateRepo extends JpaRepository<Models.CommissionRate, String> {
+        Optional<Models.CommissionRate> findBySourceIgnoreCase(String source);
+    }
+
+    public interface CommissionRecordRepo extends JpaRepository<Models.CommissionRecord, String> {
+        List<Models.CommissionRecord> findAllByOrderByCreatedAtDesc();
+        List<Models.CommissionRecord> findBySourceOrderByCreatedAtDesc(String source);
+        List<Models.CommissionRecord> findByMonthKeyOrderByCreatedAtDesc(String monthKey);
+        List<Models.CommissionRecord> findByAssignedEmployeeIdOrderByCreatedAtDesc(String assignedEmployeeId);
     }
 }
