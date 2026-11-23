@@ -632,10 +632,17 @@ public class StudioService {
             if (u.email != null) addresses.add(u.email.toLowerCase());
             if (u.phone != null) addresses.add(u.phone);
         }
-        if (actor.email != null) addresses.add(actor.email.toLowerCase());
-        if (actor.phone != null) addresses.add(actor.phone);
+        // Note: actor.email and actor.phone are NOT added here so that staff credentials and system password resets remain private to Admin
         return notifications.findTop100ByOrderByCreatedAtDesc().stream()
                 .filter(n -> n.toAddr != null && addresses.contains(n.toAddr.toLowerCase()))
+                .filter(n -> {
+                    // Filter out any notification containing credentials or temporary passwords
+                    String subj = n.subject != null ? n.subject.toLowerCase() : "";
+                    String body = n.body != null ? n.body.toLowerCase() : "";
+                    if (subj.contains("password") || subj.contains("staff sign-in") || subj.contains("account is created")) return false;
+                    if (body.contains("password:") || body.contains("sign-in details")) return false;
+                    return true;
+                })
                 .toList();
     }
 
