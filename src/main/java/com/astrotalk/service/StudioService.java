@@ -20,10 +20,12 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class StudioService {
@@ -160,7 +162,15 @@ public class StudioService {
         if (password.length() < 8) throw new ApiException(400, "Enter a phone number");
         if (users.findByEmailIgnoreCase(email).isPresent()) throw new ApiException(409, "This email already has an account. Sign in to continue.");
         if (source == null || source.isBlank()) throw new ApiException(400, "Please select how you heard about us (Lead source is required)");
-        if ("Referral".equalsIgnoreCase(source) && (referralDetails == null || referralDetails.isBlank())) {
+        
+        // Normalize and validate allowed sources: YouTube, Instagram, Referral
+        String normalizedSource;
+        if ("YouTube".equalsIgnoreCase(source)) normalizedSource = "YouTube";
+        else if ("Instagram".equalsIgnoreCase(source)) normalizedSource = "Instagram";
+        else if ("Referral".equalsIgnoreCase(source)) normalizedSource = "Referral";
+        else throw new ApiException(400, "Invalid lead source. Allowed sources: YouTube, Instagram, Referral");
+
+        if ("Referral".equals(normalizedSource) && (referralDetails == null || referralDetails.isBlank())) {
             throw new ApiException(400, "Please enter your referral code or referrer details");
         }
 
@@ -170,9 +180,13 @@ public class StudioService {
         user.fullName = name;
         user.email = email;
         user.phone = phone.trim();
-        user.source = source.trim();
+        user.source = normalizedSource;
         user.referralDetails = referralDetails.trim();
         user.leadStatus = "NEW";
+        if (body.hasNonNull("selectedPlan")) {
+            user.selectedPlan = body.path("selectedPlan").asText();
+            if (body.hasNonNull("selectedPlanName")) user.selectedPlanName = body.path("selectedPlanName").asText();
+        }
         user.billingState = catalog.businessState();
         user.passwordHash = encoder.encode(password);
         users.save(user);
@@ -278,13 +292,15 @@ public class StudioService {
     }
 
     private String storeSections(JsonNode node) {
-        if (node == null || !node.isArray()) throw new ApiException(400, "Choose what this employee can see");
+        if (node == null || !node.isArray() || node.isEmpty()) {
+            return ORIGINAL_STAFF;
+        }
         List<String> picked = new ArrayList<>();
         for (JsonNode item : node) {
             String key = item.asText("").trim();
             if (STAFF_SECTIONS.contains(key) && !picked.contains(key)) picked.add(key);
         }
-        if (picked.isEmpty()) throw new ApiException(400, "Choose at least one section this employee can see");
+        if (picked.isEmpty()) return ORIGINAL_STAFF;
         return String.join(",", picked);
     }
 
@@ -388,6 +404,17 @@ public class StudioService {
         consultations.save(c);
         if (use > 0) addPoints(u.id, -use, "spent", null, c.id, use + " points on " + c.planName);
         creditPlanShare(u, c, plan.priceInr);
+
+        // Update customer lead details & trigger conversion
+        u.selectedPlan = plan.code;
+        u.selectedPlanName = plan.name;
+        u.leadStatus = "CONVERTED";
+        if (u.convertedAt == null || u.convertedAt.isBlank()) {
+            u.convertedAt = java.time.Instant.now().toString();
+        }
+        recordCommissionForLead(u);
+        users.save(u);
+
         notify.booking(u, c);
         if (c.intake != null && !c.intake.isBlank()) notify.adminConnected(props.getAdminEmail(), u, c);
         return c;
@@ -432,9 +459,13 @@ public class StudioService {
         emp.passwordHash = encoder.encode(temporary);
         emp.billingState = catalog.businessState();
         emp.permissions = storeSections(permissions);
-        if (!notify.employeeAccess(emp, temporary)) throw new ApiException(502, "The password email could not be sent, so the employee was not added.");
+        try {
+            notify.employeeAccess(emp, temporary);
+        } catch (Exception ignored) {}
         users.save(emp);
-        return publicUser(emp);
+        Map<String, Object> out = publicUser(emp);
+        out.put("temporaryPassword", temporary);
+        return out;
     }
 
     /** Mails a new password. An unknown email gets the same quiet success so the page does not reveal who has an account. */
@@ -508,17 +539,38 @@ public class StudioService {
         return r;
     }
 
-    public Map<String, Object> stats() {
+    public Map<String, Object> stats(Models.User actor) {
         Map<String, Object> m = new LinkedHashMap<>();
-        m.put("customers", users.countByRole("CLIENT"));
-        m.put("employees", users.countByRole("EMPLOYEE"));
-        m.put("consultations", consultations.count());
-        m.put("reports", reports.count());
+        if ("ADMIN".equals(actor.role)) {
+            m.put("customers", users.countByRole("CLIENT"));
+            m.put("employees", users.countByRole("EMPLOYEE"));
+            m.put("consultations", consultations.count());
+            m.put("reports", reports.count());
+            m.put("convertedLeads", users.countByRoleAndLeadStatus("CLIENT", "CONVERTED"));
+            m.put("newLeads", users.countByRoleAndLeadStatus("CLIENT", "NEW"));
+        } else {
+            long myCustomers = users.countByRoleAndAssignedTo("CLIENT", actor.id);
+            long myConverted = users.countByRoleAndAssignedToAndLeadStatus("CLIENT", actor.id, "CONVERTED");
+            long myNew = users.countByRoleAndAssignedToAndLeadStatus("CLIENT", actor.id, "NEW");
+            List<String> myCustIds = users.findByRoleAndAssignedToOrderByCreatedAtDesc("CLIENT", actor.id).stream().map(u -> u.id).toList();
+            long myConsults = myCustIds.isEmpty() ? 0 : consultations.findByUserIdInOrderByCreatedAtDesc(myCustIds).size();
+            long myReps = myCustIds.isEmpty() ? 0 : reports.findByUserIdInOrderByCreatedAtDesc(myCustIds).size();
+            m.put("customers", myCustomers);
+            m.put("consultations", myConsults);
+            m.put("reports", myReps);
+            m.put("convertedLeads", myConverted);
+            m.put("newLeads", myNew);
+        }
         return m;
     }
 
-    public List<Models.Consultation> myConsultations(Models.User u) { return consultations.findByUserIdOrderByCreatedAtDesc(u.id); }
-    public List<Models.User> customers() { return users.findByRoleOrderByCreatedAtDesc("CLIENT"); }
+    public List<Models.Consultation> myConsultations(Models.User u) {
+        return consultations.findByUserIdOrderByCreatedAtDesc(u.id);
+    }
+
+    public List<Models.User> customers() {
+        return users.findByRoleOrderByCreatedAtDesc("CLIENT");
+    }
 
     public List<Models.User> customersForActor(Models.User actor) {
         if ("ADMIN".equals(actor.role)) {
@@ -527,15 +579,86 @@ public class StudioService {
         return users.findByRoleAndAssignedToOrderByCreatedAtDesc("CLIENT", actor.id);
     }
 
+    public List<Map<String, Object>> consultationsForActor(Models.User actor) {
+        List<Models.Consultation> list;
+        if ("ADMIN".equals(actor.role)) {
+            list = consultations.findAllByOrderByCreatedAtDesc();
+        } else {
+            List<String> myCustIds = users.findByRoleAndAssignedToOrderByCreatedAtDesc("CLIENT", actor.id).stream().map(u -> u.id).toList();
+            list = myCustIds.isEmpty() ? List.of() : consultations.findByUserIdInOrderByCreatedAtDesc(myCustIds);
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Models.Consultation c : list) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", c.id);
+            row.put("planName", c.planName);
+            row.put("durationMin", c.durationMin);
+            row.put("preferredDate", c.preferredDate);
+            row.put("preferredTime", c.preferredTime);
+            row.put("topic", c.topic);
+            row.put("status", c.status);
+            row.put("meetingLink", c.meetingLink);
+            row.put("currency", c.currency);
+            row.put("gstMode", c.gstMode);
+            row.put("totalMinor", c.totalMinor);
+            row.put("pointsUsed", c.pointsUsed);
+            row.put("payableMinor", c.payableMinor);
+            row.put("intake", c.intake);
+            users.findById(c.userId).ifPresent(u -> {
+                row.put("customerName", u.fullName);
+                row.put("customerEmail", u.email);
+                row.put("customerPhone", u.phone);
+            });
+            out.add(row);
+        }
+        return out;
+    }
+
+    public List<Models.Report> reportsForActor(Models.User actor) {
+        if ("ADMIN".equals(actor.role)) {
+            return reports.findAllByOrderByCreatedAtDesc();
+        }
+        List<String> myCustIds = users.findByRoleAndAssignedToOrderByCreatedAtDesc("CLIENT", actor.id).stream().map(u -> u.id).toList();
+        return myCustIds.isEmpty() ? List.of() : reports.findByUserIdInOrderByCreatedAtDesc(myCustIds);
+    }
+
+    public List<Models.Notification> notificationsForActor(Models.User actor) {
+        if ("ADMIN".equals(actor.role)) {
+            return notifications.findTop100ByOrderByCreatedAtDesc();
+        }
+        List<Models.User> myCusts = users.findByRoleAndAssignedToOrderByCreatedAtDesc("CLIENT", actor.id);
+        Set<String> addresses = new HashSet<>();
+        for (Models.User u : myCusts) {
+            if (u.email != null) addresses.add(u.email.toLowerCase());
+            if (u.phone != null) addresses.add(u.phone);
+        }
+        if (actor.email != null) addresses.add(actor.email.toLowerCase());
+        if (actor.phone != null) addresses.add(actor.phone);
+        return notifications.findTop100ByOrderByCreatedAtDesc().stream()
+                .filter(n -> n.toAddr != null && addresses.contains(n.toAddr.toLowerCase()))
+                .toList();
+    }
+
     @Transactional
     public Models.User assignCustomer(Models.User actor, String customerId, String employeeId) {
         Models.User customer = users.findById(customerId).orElseThrow(() -> new ApiException(404, "Customer not found"));
         if (!"CLIENT".equals(customer.role)) throw new ApiException(400, "Target user is not a customer");
 
-        // Role permissions: Admin can assign to anyone or self. Employees can self-assign or assign if allowed.
+        // Role permissions: Admin can assign to anyone or self. Employees can only self-assign an UNASSIGNED customer, or unassign themselves.
         if (!"ADMIN".equals(actor.role)) {
-            if (!actor.id.equals(employeeId) && !actor.id.equals(customer.assignedTo)) {
-                throw new ApiException(403, "You can only assign customers to yourself");
+            // Employee can only assign to themselves (employeeId == actor.id) or unassign themselves (employeeId == null && customer.assignedTo == actor.id)
+            if (employeeId != null && !employeeId.isBlank()) {
+                if (!actor.id.equals(employeeId)) {
+                    throw new ApiException(403, "You can only assign customers to yourself");
+                }
+                if (customer.assignedTo != null && !customer.assignedTo.isBlank() && !actor.id.equals(customer.assignedTo)) {
+                    throw new ApiException(403, "This customer is already assigned to another employee");
+                }
+            } else {
+                // Employee is unassigning
+                if (!actor.id.equals(customer.assignedTo)) {
+                    throw new ApiException(403, "You cannot unassign another employee's customer");
+                }
             }
         }
 
@@ -575,10 +698,14 @@ public class StudioService {
 
     private void recordCommissionForLead(Models.User customer) {
         if (customer.source == null || customer.source.isBlank()) return;
+        // Check if a commission record already exists for this customer to prevent duplicates
+        if (!commissionRecords.findByCustomerIdOrderByCreatedAtDesc(customer.id).isEmpty()) {
+            return;
+        }
         String monthKey = java.time.LocalDate.now().toString().substring(0, 7); // e.g. "2026-11"
         // Find rate
         Models.CommissionRate rate = commissionRates.findBySourceIgnoreCase(customer.source).orElse(null);
-        double ratePct = rate != null ? rate.ratePercent : ("Instagram".equalsIgnoreCase(customer.source) ? 20.0 : 10.0);
+        double ratePct = rate != null ? rate.ratePercent : ("Instagram".equalsIgnoreCase(customer.source) ? 20.0 : "Referral".equalsIgnoreCase(customer.source) ? 15.0 : 10.0);
         long baseAmount = 100000L; // default ₹1,000 in minor units (paise)
         if (customer.selectedPlan != null && !customer.selectedPlan.isBlank()) {
             try {
@@ -610,6 +737,9 @@ public class StudioService {
 
     @Transactional
     public Models.CommissionRate updateCommissionRate(String source, double ratePercent, String adminName) {
+        if (ratePercent < 0.0 || ratePercent > 100.0) {
+            throw new ApiException(400, "Commission rate must be between 0% and 100%");
+        }
         Models.CommissionRate rate = commissionRates.findBySourceIgnoreCase(source).orElseGet(() -> {
             Models.CommissionRate cr = new Models.CommissionRate();
             cr.source = source;

@@ -14,6 +14,8 @@ public final class Repos {
         List<Models.User> findByRoleAndAssignedToOrderByCreatedAtDesc(String role, String assignedTo);
         long countByRole(String role);
         long countByRoleAndLeadStatus(String role, String leadStatus);
+        long countByRoleAndAssignedTo(String role, String assignedTo);
+        long countByRoleAndAssignedToAndLeadStatus(String role, String assignedTo, String leadStatus);
     }
 
     public interface ProfileRepo extends JpaRepository<Models.Profile, String> {
@@ -26,11 +28,13 @@ public final class Repos {
 
     public interface ConsultationRepo extends JpaRepository<Models.Consultation, String> {
         List<Models.Consultation> findByUserIdOrderByCreatedAtDesc(String userId);
+        List<Models.Consultation> findByUserIdInOrderByCreatedAtDesc(List<String> userIds);
         List<Models.Consultation> findAllByOrderByCreatedAtDesc();
     }
 
     public interface ReportRepo extends JpaRepository<Models.Report, String> {
         List<Models.Report> findByUserIdOrderByCreatedAtDesc(String userId);
+        List<Models.Report> findByUserIdInOrderByCreatedAtDesc(List<String> userIds);
         List<Models.Report> findAllByOrderByCreatedAtDesc();
     }
 
@@ -76,5 +80,6 @@ public final class Repos {
         List<Models.CommissionRecord> findBySourceOrderByCreatedAtDesc(String source);
         List<Models.CommissionRecord> findByMonthKeyOrderByCreatedAtDesc(String monthKey);
         List<Models.CommissionRecord> findByAssignedEmployeeIdOrderByCreatedAtDesc(String assignedEmployeeId);
+        List<Models.CommissionRecord> findByCustomerIdOrderByCreatedAtDesc(String customerId);
     }
 }

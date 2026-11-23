@@ -197,7 +197,7 @@ class AdminController {
     AdminController(StudioService studio, CatalogService catalog) { this.studio = studio; this.catalog = catalog; }
 
     @GetMapping("/stats")
-    Map<String, Object> stats() { allow("overview"); return studio.stats(); }
+    Map<String, Object> stats() { allow("overview"); return studio.stats(actor()); }
 
     @GetMapping("/customers")
     Object customers() {
@@ -232,7 +232,10 @@ class AdminController {
     @PutMapping("/commissions/rates/{source}")
     Models.CommissionRate updateCommissionRate(@PathVariable String source, @RequestBody JsonNode body) {
         if (!"ADMIN".equals(actor().role)) throw new com.astrotalk.config.ApiException(403, "Only Admin can edit commission rates");
-        double rate = body.path("ratePercent").asDouble(10.0);
+        if (!body.hasNonNull("ratePercent")) {
+            throw new com.astrotalk.config.ApiException(400, "Enter a valid commission rate percentage");
+        }
+        double rate = body.path("ratePercent").asDouble();
         return studio.updateCommissionRate(source, rate, actor().fullName);
     }
 
@@ -267,7 +270,7 @@ class AdminController {
     }
 
     @GetMapping("/consultations")
-    Object consultations() { allow("consults"); return studio.allConsultations(); }
+    Object consultations() { allow("consults"); return studio.consultationsForActor(actor()); }
 
     @PatchMapping("/consultations/{id}")
     Models.Consultation patch(@PathVariable String id, @RequestBody JsonNode body) {
@@ -276,7 +279,7 @@ class AdminController {
     }
 
     @GetMapping("/reports")
-    Object reports() { allow("reports"); return studio.allReports(); }
+    Object reports() { allow("reports"); return studio.reportsForActor(actor()); }
 
     @PostMapping(value = "/reports", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     Models.Report upload(Authentication auth, @RequestParam String userId, @RequestParam(required = false) String profileId, @RequestParam(required = false) String title, @RequestParam(required = false) String reportId, @RequestParam MultipartFile file) {
@@ -285,7 +288,7 @@ class AdminController {
     }
 
     @GetMapping("/notifications")
-    Object notifications() { allow("notes"); return studio.allNotifications(); }
+    Object notifications() { allow("notes"); return studio.notificationsForActor(actor()); }
 
     @GetMapping("/questions")
     Object questions() { allow("questions"); return studio.allQuestions(); }
